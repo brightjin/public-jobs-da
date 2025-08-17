@@ -1,0 +1,31 @@
+{
+  "version": "v20250817_223127",
+  "created_at": "2025-08-17T22:31:27.559290",
+  "data_source": {
+    "source_type": "database",
+    "table_name": "채용공고평가점수"
+  },
+  "total_postings": 147,
+  "unique_agencies": 15,
+  "unique_forms": 15,
+  "agency_form_combinations": 72,
+  "score_columns": [
+    "성실성",
+    "개방성",
+    "외향성",
+    "우호성",
+    "정서안정성",
+    "기술전문성",
+    "인지문제해결",
+    "대인-영향력",
+    "자기관리",
+    "적응력",
+    "학습속도",
+    "대인민첩성",
+    "성과민첩성",
+    "자기인식",
+    "자기조절",
+    "공감-사회기술"
+  ],
+  "model_type": "similarity_based_recommendation"
+}
