@@ -42,9 +42,9 @@ pip install -r requirements.txt
 ### 4. 환경변수 설정
 `.env` 파일 생성:
 ```bash
-DB_HOST=158.247.213.167
-DB_PORT=3306
-DB_NAME=sangsang
+DB_HOST=hostname
+DB_PORT=port
+DB_NAME=database
 DB_USER=your_username
 DB_PASSWORD=your_password
 API_PORT=8080
