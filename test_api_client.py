@@ -85,8 +85,8 @@ def display_recommendations(result):
         print()
         
         for i, rec in enumerate(recommendations, 1):
-            print(f"  {i}. 공고번호: {rec.get('공고번호', 'N/A')}")
-            print(f"     기관코드: {rec.get('기관코드', 'N/A')}")
+            print(f"  {i}. 공고번호: {rec.get('id', 'N/A')}")
+            print(f"     기관명: {rec.get('기관명', 'N/A')}")
             print(f"     일반전형: {rec.get('일반전형', 'N/A')}")
             print(f"     유사도: {rec.get('유사도', 'N/A'):.3f}")
             print()

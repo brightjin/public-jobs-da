@@ -23,8 +23,8 @@ CORS(app)
 similarity_model = None
 score_columns = [
     '성실성', '개방성', '외향성', '우호성', '정서안정성', '기술전문성',
-    '인지문제해결', '대인-영향력', '자기관리', '적응력', '학습속도',
-    '대인민첩성', '성과민첩성', '자기인식', '자기조절', '공감-사회기술'
+    '인지문제해결', '대인영향력', '자기관리', '적응력', '학습속도',
+    '대인민첩성', '성과민첩성', '자기인식', '자기조절', '공감사회기술'
 ]
 
 def load_similarity_model():
@@ -153,8 +153,8 @@ def get_recommendations(user_scores, top_k=5):
             
             recommendation = {
                 'rank': rank,
-                '공고일련번호': posting['공고일련번호'],
-                '기관코드': posting['기관코드'],
+                'id': int(posting['id']),  # int64를 int로 변환
+                '기관명': posting['기관명'],
                 '일반전형': posting['일반전형'],
                 '유사도': round(similarity, 3),
                 '공고점수': posting_scores
@@ -182,7 +182,7 @@ def get_statistics():
         # 기본 통계
         stats = {
             'total_postings': len(job_posting_scores),
-            'unique_agencies': job_posting_scores['기관코드'].nunique(),
+            'unique_agencies': job_posting_scores['기관명'].nunique(),
             'unique_forms': job_posting_scores['일반전형'].nunique()
         }
         
@@ -190,7 +190,7 @@ def get_statistics():
         form_distribution = job_posting_scores['일반전형'].value_counts().to_dict()
         
         # 기관별 분포
-        agency_distribution = job_posting_scores['기관코드'].value_counts().to_dict()
+        agency_distribution = job_posting_scores['기관명'].value_counts().to_dict()
         
         return jsonify({
             'success': True,
@@ -214,27 +214,27 @@ def get_sample_scores():
             "name": "기술직 지향",
             "scores": {
                 '성실성': 4, '개방성': 5, '외향성': 3, '우호성': 3, '정서안정성': 4,
-                '기술전문성': 5, '인지문제해결': 5, '대인-영향력': 3, '자기관리': 4,
+                '기술전문성': 5, '인지문제해결': 5, '대인영향력': 3, '자기관리': 4,
                 '적응력': 4, '학습속도': 5, '대인민첩성': 3, '성과민첩성': 4,
-                '자기인식': 4, '자기조절': 4, '공감-사회기술': 3
+                '자기인식': 4, '자기조절': 4, '공감사회기술': 3
             }
         },
         {
             "name": "사무직 지향",
             "scores": {
                 '성실성': 5, '개방성': 3, '외향성': 4, '우호성': 4, '정서안정성': 4,
-                '기술전문성': 3, '인지문제해결': 4, '대인-영향력': 4, '자기관리': 5,
+                '기술전문성': 3, '인지문제해결': 4, '대인영향력': 4, '자기관리': 5,
                 '적응력': 4, '학습속도': 3, '대인민첩성': 4, '성과민첩성': 4,
-                '자기인식': 4, '자기조절': 5, '공감-사회기술': 4
+                '자기인식': 4, '자기조절': 5, '공감사회기술': 4
             }
         },
         {
             "name": "영업/서비스직 지향",
             "scores": {
                 '성실성': 4, '개방성': 4, '외향성': 5, '우호성': 5, '정서안정성': 4,
-                '기술전문성': 3, '인지문제해결': 3, '대인-영향력': 5, '자기관리': 4,
+                '기술전문성': 3, '인지문제해결': 3, '대인영향력': 5, '자기관리': 4,
                 '적응력': 5, '학습속도': 4, '대인민첩성': 5, '성과민첩성': 4,
-                '자기인식': 4, '자기조절': 4, '공감-사회기술': 5
+                '자기인식': 4, '자기조절': 4, '공감사회기술': 5
             }
         }
     ]
