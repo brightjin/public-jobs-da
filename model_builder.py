@@ -39,50 +39,50 @@ class JobRecommendationModelBuilder:
         self.csv_path = csv_path
         self.score_columns = [
             '성실성', '개방성', '외향성', '우호성', '정서안정성', '기술전문성', 
-            '인지문제해결', '대인-영향력', '자기관리', '적응력', '학습속도', 
-            '대인민첩성', '성과민첩성', '자기인식', '자기조절', '공감-사회기술'
+            '인지문제해결', '대인영향력', '자기관리', '적응력', '학습속도', 
+            '대인민첩성', '성과민첩성', '자기인식', '자기조절', '공감사회기술'
         ]
         self.job_posting_scores = None  # 채용공고평가점수 데이터
         self.scaler = StandardScaler()  # 점수 정규화를 위한 스케일러
         self.model_info = {}
         
     def load_data_from_database(self):
-        """데이터베이스에서 채용공고평가점수 테이블 로딩"""
+        """데이터베이스에서 TMP_채용공고평가점수 테이블 로딩"""
         try:
-            print("🗄️ 데이터베이스에서 채용공고평가점수 데이터 로딩 중...")
+            print("🗄️ 데이터베이스에서 TMP_채용공고평가점수 데이터 로딩 중...")
             
             with DatabaseManager() as db:
-                # 채용공고평가점수 테이블 조회
+                # TMP_채용공고평가점수 테이블 조회
                 query = """
-                SELECT 공고일련번호, 기관코드, 일반전형,
+                SELECT id, 기관명, 일반전형,
                        성실성, 개방성, 외향성, 우호성, 정서안정성, 기술전문성,
-                       인지문제해결, `대인-영향력`, 자기관리, 적응력, 학습속도,
-                       대인민첩성, 성과민첩성, 자기인식, 자기조절, `공감-사회기술`
-                FROM 채용공고평가점수
+                       인지문제해결, 대인영향력, 자기관리, 적응력, 학습속도,
+                       대인민첩성, 성과민첩성, 자기인식, 자기조절, 공감사회기술
+                FROM TMP_채용공고평가점수
                 WHERE 성실성 IS NOT NULL 
                 AND 개방성 IS NOT NULL 
                 AND 외향성 IS NOT NULL
-                ORDER BY 공고일련번호
+                ORDER BY id
                 """
                 
                 result = db.execute_query(query)
                 if not result:
-                    print("❌ 채용공고평가점수 테이블에서 데이터를 찾을 수 없습니다.")
+                    print("❌ TMP_채용공고평가점수 테이블에서 데이터를 찾을 수 없습니다.")
                     return False
                 
                 # DataFrame으로 변환
                 columns = [
-                    '공고일련번호', '기관코드', '일반전형',
+                    'id', '기관명', '일반전형',
                     '성실성', '개방성', '외향성', '우호성', '정서안정성', '기술전문성',
-                    '인지문제해결', '대인-영향력', '자기관리', '적응력', '학습속도',
-                    '대인민첩성', '성과민첩성', '자기인식', '자기조절', '공감-사회기술'
+                    '인지문제해결', '대인영향력', '자기관리', '적응력', '학습속도',
+                    '대인민첩성', '성과민첩성', '자기인식', '자기조절', '공감사회기술'
                 ]
                 
                 self.job_posting_scores = pd.DataFrame(result, columns=columns)
                 
                 print(f"✅ 데이터베이스 데이터 로딩 완료: {len(self.job_posting_scores)}개 채용공고")
                 print(f"📊 컬럼: {list(self.job_posting_scores.columns)}")
-                print(f"📋 고유 기관 수: {self.job_posting_scores['기관코드'].nunique()}")
+                print(f"📋 고유 기관 수: {self.job_posting_scores['기관명'].nunique()}")
                 print(f"📋 고유 전형 수: {self.job_posting_scores['일반전형'].nunique()}")
                 
                 return True
@@ -199,8 +199,8 @@ class JobRecommendationModelBuilder:
             recommendations = []
             for idx in top_indices:
                 posting_info = {
-                    '공고일련번호': self.job_posting_scores.iloc[idx]['공고일련번호'],
-                    '기관코드': self.job_posting_scores.iloc[idx]['기관코드'],
+                    'id': self.job_posting_scores.iloc[idx]['id'],
+                    '기관명': self.job_posting_scores.iloc[idx]['기관명'],
                     '일반전형': self.job_posting_scores.iloc[idx]['일반전형'],
                     '유사도': float(similarities[idx])
                 }
@@ -435,13 +435,13 @@ class JobRecommendationModelBuilder:
                 print("❌ 채용공고평가점수 데이터가 없습니다.")
                 return False
             
-            # 기관코드 + 일반전형별 평균 점수 계산
-            self.form_profiles = self.job_posting_scores.groupby(['기관코드', '일반전형'])[self.score_columns].mean()
+            # 기관명 + 일반전형별 평균 점수 계산
+            self.form_profiles = self.job_posting_scores.groupby(['기관명', '일반전형'])[self.score_columns].mean()
             
             # 전형별 통계 정보도 생성
             self.form_stats = {
                 'total_postings': len(self.job_posting_scores),
-                'unique_agencies': self.job_posting_scores['기관코드'].nunique(),
+                'unique_agencies': self.job_posting_scores['기관명'].nunique(),
                 'unique_forms': self.job_posting_scores['일반전형'].nunique(),
                 'agency_form_combinations': len(self.form_profiles)
             }
@@ -491,7 +491,7 @@ class JobRecommendationModelBuilder:
                     'created_at': datetime.now().isoformat(),
                     'data_source': {
                         'source_type': 'database',
-                        'table_name': '채용공고평가점수'
+                        'table_name': 'TMP_채용공고평가점수'
                     },
                     'total_postings': self.form_stats['total_postings'],
                     'unique_agencies': self.form_stats['unique_agencies'],
@@ -591,8 +591,8 @@ def recommend_job_postings(user_scores, model_dir='./models', top_k=5):
     
     score_columns = [
         '성실성', '개방성', '외향성', '우호성', '정서안정성', '기술전문성',
-        '인지문제해결', '대인-영향력', '자기관리', '적응력', '학습속도',
-        '대인민첩성', '성과민첩성', '자기인식', '자기조절', '공감-사회기술'
+        '인지문제해결', '대인영향력', '자기관리', '적응력', '학습속도',
+        '대인민첩성', '성과민첩성', '자기인식', '자기조절', '공감사회기술'
     ]
     
     # 사용자 점수 정규화
@@ -608,8 +608,8 @@ def recommend_job_postings(user_scores, model_dir='./models', top_k=5):
     recommendations = []
     for idx in top_indices:
         recommendations.append({
-            '공고일련번호': job_posting_scores.iloc[idx]['공고일련번호'],
-            '기관코드': job_posting_scores.iloc[idx]['기관코드'],
+            'id': job_posting_scores.iloc[idx]['id'],
+            '기관명': job_posting_scores.iloc[idx]['기관명'],
             '일반전형': job_posting_scores.iloc[idx]['일반전형'],
             '유사도': float(similarities[idx])
         })
@@ -688,7 +688,7 @@ def main():
     print(f"📡 데이터 소스: {args.source.upper()}")
     
     if args.source == 'database':
-        print("🗄️ MariaDB 채용공고평가점수 테이블에서 데이터 로딩")
+        print("🗄️ MariaDB TMP_채용공고평가점수 테이블에서 데이터 로딩")
         print("🎯 유사도 기반 추천 시스템 구축")
         print("📊 16가지 점수를 통한 개인화된 공고 추천")
     elif args.source == 'api':
@@ -743,7 +743,7 @@ def main():
         if args.source == 'database':
             print("💡 데이터베이스 연결 또는 테이블 문제일 수 있습니다.")
             print("   - MariaDB 서버 연결 상태 확인")
-            print("   - 채용공고평가점수 테이블 존재 여부 확인")
+            print("   - TMP_채용공고평가점수 테이블 존재 여부 확인")
             print("   - 테이블에 데이터가 있는지 확인")
         elif args.source == 'api':
             print("💡 API 연결 문제일 수 있습니다. CSV 모드로 시도해보세요:")

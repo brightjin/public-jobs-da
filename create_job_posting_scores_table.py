@@ -1,292 +1,373 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-채용공고평가점수 테이블 생성 스크립트
-데이터베이스에 새로운 추천 시스템을 위한 테이블을 생성합니다.
+채용공고 평가점수 테이블 생성 스크립트
+TMP_채용공고_분리 테이블의 기관명, 공고명, 일반전형 컬럼을 분석하여
+16개 평가점수를 생성하고 TMP_채용공고평가점수 테이블을 신규 생성
 """
 
+import pandas as pd
+import numpy as np
+import re
+import logging
+from datetime import datetime
 from database_manager import DatabaseManager
-from log_config import get_logger
-import random
+from log_config import setup_logger
 
-# 로깅 설정
-logger = get_logger(__name__, 'create_job_posting_scores_table.log')
+# 로거 설정
+logger = setup_logger('job_score_generator', 'create_job_posting_scores.log')
 
-def create_job_posting_scores_table():
-    """채용공고평가점수 테이블 생성"""
-    try:
-        print("🗄️ 채용공고평가점수 테이블 생성 중...")
+class JobPostingScoreGenerator:
+    """채용공고 평가점수 생성기"""
+    
+    def __init__(self):
+        self.db = DatabaseManager(database='sangsang')
+        self.db.connect()  # 데이터베이스 연결
+        self.score_columns = [
+            '성실성', '개방성', '외향성', '우호성', '정서안정성', '기술전문성',
+            '인지문제해결', '대인영향력', '자기관리', '적응력', '학습속도', 
+            '대인민첩성', '성과민첩성', '자기인식', '자기조절', '공감사회기술'
+        ]
         
-        with DatabaseManager() as db:
-            # 테이블 생성 SQL
-            create_table_sql = """
-            CREATE TABLE IF NOT EXISTS 채용공고평가점수 (
-                공고일련번호 VARCHAR(50) PRIMARY KEY,
-                기관코드 VARCHAR(20) NOT NULL,
-                일반전형 VARCHAR(100) NOT NULL,
-                성실성 INT NOT NULL CHECK (성실성 BETWEEN 1 AND 5),
-                개방성 INT NOT NULL CHECK (개방성 BETWEEN 1 AND 5),
-                외향성 INT NOT NULL CHECK (외향성 BETWEEN 1 AND 5),
-                우호성 INT NOT NULL CHECK (우호성 BETWEEN 1 AND 5),
-                정서안정성 INT NOT NULL CHECK (정서안정성 BETWEEN 1 AND 5),
-                기술전문성 INT NOT NULL CHECK (기술전문성 BETWEEN 1 AND 5),
-                인지문제해결 INT NOT NULL CHECK (인지문제해결 BETWEEN 1 AND 5),
-                `대인-영향력` INT NOT NULL CHECK (`대인-영향력` BETWEEN 1 AND 5),
-                자기관리 INT NOT NULL CHECK (자기관리 BETWEEN 1 AND 5),
-                적응력 INT NOT NULL CHECK (적응력 BETWEEN 1 AND 5),
-                학습속도 INT NOT NULL CHECK (학습속도 BETWEEN 1 AND 5),
-                대인민첩성 INT NOT NULL CHECK (대인민첩성 BETWEEN 1 AND 5),
-                성과민첩성 INT NOT NULL CHECK (성과민첩성 BETWEEN 1 AND 5),
-                자기인식 INT NOT NULL CHECK (자기인식 BETWEEN 1 AND 5),
-                자기조절 INT NOT NULL CHECK (자기조절 BETWEEN 1 AND 5),
-                `공감-사회기술` INT NOT NULL CHECK (`공감-사회기술` BETWEEN 1 AND 5),
-                생성일시 TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                수정일시 TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX idx_agency_form (기관코드, 일반전형),
-                INDEX idx_agency (기관코드),
-                INDEX idx_form (일반전형)
+    def create_table(self):
+        """TMP_채용공고평가점수 테이블 생성"""
+        try:
+            logger.info("TMP_채용공고평가점수 테이블 생성 시작")
+            
+            # 기존 테이블 삭제
+            drop_query = "DROP TABLE IF EXISTS TMP_채용공고평가점수"
+            self.db.execute_query(drop_query, fetch=False)
+            logger.info("기존 TMP_채용공고평가점수 테이블 삭제 완료")
+            
+            # 새 테이블 생성
+            create_query = """
+            CREATE TABLE TMP_채용공고평가점수 (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                기관명 VARCHAR(255) NOT NULL,
+                공고명 TEXT,
+                일반전형 VARCHAR(500),
+                성실성 INT DEFAULT 0 CHECK (성실성 BETWEEN 1 AND 5),
+                개방성 INT DEFAULT 0 CHECK (개방성 BETWEEN 1 AND 5),
+                외향성 INT DEFAULT 0 CHECK (외향성 BETWEEN 1 AND 5),
+                우호성 INT DEFAULT 0 CHECK (우호성 BETWEEN 1 AND 5),
+                정서안정성 INT DEFAULT 0 CHECK (정서안정성 BETWEEN 1 AND 5),
+                기술전문성 INT DEFAULT 0 CHECK (기술전문성 BETWEEN 1 AND 5),
+                인지문제해결 INT DEFAULT 0 CHECK (인지문제해결 BETWEEN 1 AND 5),
+                대인영향력 INT DEFAULT 0 CHECK (대인영향력 BETWEEN 1 AND 5),
+                자기관리 INT DEFAULT 0 CHECK (자기관리 BETWEEN 1 AND 5),
+                적응력 INT DEFAULT 0 CHECK (적응력 BETWEEN 1 AND 5),
+                학습속도 INT DEFAULT 0 CHECK (학습속도 BETWEEN 1 AND 5),
+                대인민첩성 INT DEFAULT 0 CHECK (대인민첩성 BETWEEN 1 AND 5),
+                성과민첩성 INT DEFAULT 0 CHECK (성과민첩성 BETWEEN 1 AND 5),
+                자기인식 INT DEFAULT 0 CHECK (자기인식 BETWEEN 1 AND 5),
+                자기조절 INT DEFAULT 0 CHECK (자기조절 BETWEEN 1 AND 5),
+                공감사회기술 INT DEFAULT 0 CHECK (공감사회기술 BETWEEN 1 AND 5),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_기관명 (기관명),
+                INDEX idx_일반전형 (일반전형(100))
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """
             
-            db.execute_query(create_table_sql, fetch=False)
-            print("✅ 채용공고평가점수 테이블 생성 완료")
+            self.db.execute_query(create_query, fetch=False)
+            logger.info("TMP_채용공고평가점수 테이블 생성 완료")
+            print("✅ TMP_채용공고평가점수 테이블 생성 완료")
+            return True
             
-            # 테이블 존재 확인
-            check_sql = "SHOW TABLES LIKE '채용공고평가점수'"
-            result = db.execute_query(check_sql)
+        except Exception as e:
+            logger.error(f"테이블 생성 실패: {e}")
+            print(f"❌ 테이블 생성 실패: {e}")
+            return False
+    
+    def load_source_data(self):
+        """소스 데이터 로드"""
+        try:
+            logger.info("소스 데이터 로드 시작")
             
-            if result:
-                print("✅ 테이블 생성 확인됨")
-                return True
-            else:
-                print("❌ 테이블 생성 실패")
-                return False
+            query = """
+            SELECT id, 기관명, 공고명, 일반전형
+            FROM TMP_채용공고_분리
+            ORDER BY id
+            """
+            
+            result = self.db.execute_query(query)
+            if not result:
+                logger.error("소스 데이터가 없습니다")
+                return None
                 
-    except Exception as e:
-        print(f"❌ 테이블 생성 실패: {e}")
-        return False
-
-def insert_sample_data():
-    """샘플 데이터 삽입"""
-    try:
-        print("🎯 샘플 데이터 생성 중...")
-        
-        # 샘플 기관 및 전형 정보
-        sample_agencies = [
-            "A001", "A002", "A003", "A004", "A005",
-            "B001", "B002", "B003", "B004", "B005",
-            "C001", "C002", "C003", "C004", "C005"
-        ]
-        
-        sample_forms = [
-            "일반사무", "기술직", "운전직", "공무직", "연구직",
-            "사서직", "의료직", "교육직", "보건직", "전문직",
-            "기능직", "서비스직", "관리직", "영업직", "생산직"
-        ]
-        
-        sample_data = []
-        posting_id = 1
-        
-        # 각 기관별로 여러 전형의 공고 생성
-        for agency in sample_agencies:
-            # 기관당 3-7개의 다른 전형 공고 생성
-            num_forms = random.randint(3, 7)
-            selected_forms = random.sample(sample_forms, num_forms)
+            df = pd.DataFrame(result, columns=['id', '기관명', '공고명', '일반전형'])
+            logger.info(f"소스 데이터 로드 완료: {len(df)}개 레코드")
+            print(f"📊 소스 데이터 로드 완료: {len(df)}개 레코드")
+            return df
             
-            for form in selected_forms:
-                # 각 전형당 1-3개의 공고 생성
-                num_postings = random.randint(1, 3)
+        except Exception as e:
+            logger.error(f"소스 데이터 로드 실패: {e}")
+            print(f"❌ 소스 데이터 로드 실패: {e}")
+            return None
+    
+    def analyze_job_characteristics(self, 기관명, 공고명, 일반전형):
+        """채용공고 특성 분석 및 가중치 계산"""
+        weights = {col: 1.0 for col in self.score_columns}
+        
+        # 텍스트 결합 및 전처리
+        combined_text = f"{기관명} {공고명} {일반전형}".lower()
+        
+        # 1. 기술/전문직 가중치
+        tech_keywords = ['기술', '연구', '개발', 'it', '정보', '시스템', '프로그램', '엔지니어', '전산', '소프트웨어']
+        if any(keyword in combined_text for keyword in tech_keywords):
+            weights['기술전문성'] *= 1.5
+            weights['인지문제해결'] *= 1.4
+            weights['학습속도'] *= 1.3
+            weights['자기관리'] *= 1.2
+        
+        # 2. 행정/사무직 가중치
+        admin_keywords = ['사무', '행정', '관리', '총무', '기획', '회계', '인사']
+        if any(keyword in combined_text for keyword in admin_keywords):
+            weights['성실성'] *= 1.4
+            weights['자기관리'] *= 1.3
+            weights['공감사회기술'] *= 1.2
+            weights['대인영향력'] *= 1.2
+        
+        # 3. 대인서비스 가중치
+        service_keywords = ['고객', '상담', '민원', '안내', '서비스', '접수']
+        if any(keyword in combined_text for keyword in service_keywords):
+            weights['외향성'] *= 1.4
+            weights['우호성'] *= 1.3
+            weights['공감사회기술'] *= 1.3
+            weights['대인민첩성'] *= 1.2
+        
+        # 4. 경력/신입 구분
+        if '신입' in combined_text or '경력무관' in combined_text:
+            weights['학습속도'] *= 1.3
+            weights['적응력'] *= 1.2
+            weights['개방성'] *= 1.2
+        elif '경력' in combined_text:
+            weights['성실성'] *= 1.2
+            weights['자기관리'] *= 1.2
+            weights['성과민첩성'] *= 1.2
+        
+        # 5. 관리직 가중치
+        manager_keywords = ['팀장', '과장', '부장', '관리자', '책임자', '리더']
+        if any(keyword in combined_text for keyword in manager_keywords):
+            weights['대인영향력'] *= 1.4
+            weights['자기조절'] *= 1.3
+            weights['성과민첩성'] *= 1.3
+            weights['자기인식'] *= 1.2
+        
+        return weights
+    
+    def generate_score_with_weights(self, weights):
+        """가중치를 적용한 점수 생성"""
+        scores = {}
+        
+        for col in self.score_columns:
+            # 기본 점수: 평균 3.0, 표준편차 0.8의 정규분포
+            base_score = np.random.normal(3.0, 0.8)
+            
+            # 가중치 적용
+            weighted_score = base_score * weights[col]
+            
+            # 점수 범위 제한 (1 ~ 5)
+            final_score = max(1, min(5, weighted_score))
+            
+            # 정수로 반올림
+            scores[col] = int(round(final_score))
+        
+        return scores
+    
+    def generate_all_scores(self, df):
+        """모든 레코드의 점수 생성"""
+        try:
+            logger.info("점수 생성 시작")
+            all_scores = []
+            
+            for idx, row in df.iterrows():
+                # 특성 분석 및 가중치 계산
+                weights = self.analyze_job_characteristics(
+                    row['기관명'], row['공고명'], row['일반전형']
+                )
                 
-                for i in range(num_postings):
-                    posting_number = f"JOB{posting_id:04d}"
-                    
-                    # 전형별 특성화된 점수 생성
-                    scores = generate_scores_for_form(form)
-                    
-                    sample_data.append({
-                        '공고일련번호': posting_number,
-                        '기관코드': agency,
-                        '일반전형': form,
-                        **scores
-                    })
-                    
-                    posting_id += 1
-        
-        print(f"📊 생성된 샘플 데이터: {len(sample_data)}개 공고")
-        
-        # 데이터베이스에 삽입
-        with DatabaseManager() as db:
-            insert_sql = """
-            INSERT INTO 채용공고평가점수 
-            (공고일련번호, 기관코드, 일반전형, 성실성, 개방성, 외향성, 우호성, 정서안정성, 
-             기술전문성, 인지문제해결, `대인-영향력`, 자기관리, 적응력, 학습속도, 
-             대인민첩성, 성과민첩성, 자기인식, 자기조절, `공감-사회기술`)
-            VALUES (%(공고일련번호)s, %(기관코드)s, %(일반전형)s, %(성실성)s, %(개방성)s, %(외향성)s, 
-                    %(우호성)s, %(정서안정성)s, %(기술전문성)s, %(인지문제해결)s, %(대인-영향력)s, 
-                    %(자기관리)s, %(적응력)s, %(학습속도)s, %(대인민첩성)s, %(성과민첩성)s, 
-                    %(자기인식)s, %(자기조절)s, %(공감-사회기술)s)
+                # 가중치 적용 점수 생성
+                scores = self.generate_score_with_weights(weights)
+                
+                # 기본 정보 추가
+                score_data = {
+                    '기관명': row['기관명'],
+                    '공고명': row['공고명'],
+                    '일반전형': row['일반전형']
+                }
+                score_data.update(scores)
+                all_scores.append(score_data)
+                
+                if (idx + 1) % 50 == 0:
+                    print(f"  📈 진행률: {idx + 1}/{len(df)} ({(idx + 1)/len(df)*100:.1f}%)")
+            
+            logger.info(f"점수 생성 완료: {len(all_scores)}개")
+            print(f"✅ 점수 생성 완료: {len(all_scores)}개")
+            return all_scores
+            
+        except Exception as e:
+            logger.error(f"점수 생성 실패: {e}")
+            print(f"❌ 점수 생성 실패: {e}")
+            return None
+    
+    def insert_scores(self, scores_data):
+        """점수 데이터 삽입"""
+        try:
+            logger.info("점수 데이터 삽입 시작")
+            
+            insert_query = f"""
+            INSERT INTO TMP_채용공고평가점수 
+            (기관명, 공고명, 일반전형, {', '.join(self.score_columns)})
+            VALUES (%(기관명)s, %(공고명)s, %(일반전형)s, {', '.join([f'%({col})s' for col in self.score_columns])})
             """
             
             success_count = 0
-            for data in sample_data:
-                try:
-                    db.execute_query(insert_sql, data, fetch=False)
-                    success_count += 1
-                except Exception as e:
-                    print(f"⚠️ 데이터 삽입 실패: {data['공고일련번호']} - {e}")
+            batch_size = 50
             
-            print(f"✅ 샘플 데이터 삽입 완료: {success_count}/{len(sample_data)}개")
+            for i in range(0, len(scores_data), batch_size):
+                batch = scores_data[i:i + batch_size]
+                
+                for data in batch:
+                    try:
+                        self.db.execute_query(insert_query, data, fetch=False)
+                        success_count += 1
+                    except Exception as e:
+                        logger.warning(f"데이터 삽입 실패: {data['기관명']} - {e}")
+                
+                print(f"  📥 삽입 진행률: {min(i + batch_size, len(scores_data))}/{len(scores_data)} ({min(i + batch_size, len(scores_data))/len(scores_data)*100:.1f}%)")
+            
+            logger.info(f"점수 데이터 삽입 완료: {success_count}/{len(scores_data)}개")
+            print(f"✅ 점수 데이터 삽입 완료: {success_count}/{len(scores_data)}개")
+            return success_count > 0
+            
+        except Exception as e:
+            logger.error(f"점수 데이터 삽입 실패: {e}")
+            print(f"❌ 점수 데이터 삽입 실패: {e}")
+            return False
+    
+    def verify_results(self):
+        """결과 검증"""
+        try:
+            logger.info("결과 검증 시작")
+            
+            # 전체 레코드 수 확인
+            count_query = "SELECT COUNT(*) FROM TMP_채용공고평가점수"
+            result = self.db.execute_query(count_query)
+            total_count = result[0][0] if result else 0
+            
+            print(f"\n📊 검증 결과:")
+            print(f"   총 레코드 수: {total_count}개")
+            
+            # 점수 통계
+            stats_query = f"""
+            SELECT 
+                AVG(`성실성`) as avg_성실성,
+                AVG(`기술전문성`) as avg_기술전문성,
+                AVG(`인지문제해결`) as avg_인지문제해결,
+                AVG(`대인영향력`) as avg_대인영향력,
+                MIN(`성실성`) as min_score,
+                MAX(`성실성`) as max_score
+            FROM TMP_채용공고평가점수
+            """
+            
+            result = self.db.execute_query(stats_query)
+            if result:
+                stats = result[0]
+                print(f"   평균 성실성: {stats[0]:.2f}")
+                print(f"   평균 기술전문성: {stats[1]:.2f}")
+                print(f"   평균 인지문제해결: {stats[2]:.2f}")
+                print(f"   평균 대인영향력: {stats[3]:.2f}")
+                print(f"   점수 범위: {stats[4]:.1f} ~ {stats[5]:.1f}")
+            
+            # 샘플 데이터
+            sample_query = """
+            SELECT 기관명, 일반전형, 성실성, 기술전문성, 인지문제해결, 대인영향력
+            FROM TMP_채용공고평가점수
+            ORDER BY id
+            LIMIT 3
+            """
+            
+            result = self.db.execute_query(sample_query)
+            if result:
+                print(f"\n📝 샘플 데이터:")
+                for row in result:
+                    print(f"   {row[0]} | {row[1]} | 성실성:{row[2]} | 기술:{row[3]} | 인지:{row[4]} | 대인:{row[5]}")
+            
+            logger.info("결과 검증 완료")
             return True
             
-    except Exception as e:
-        print(f"❌ 샘플 데이터 삽입 실패: {e}")
-        return False
-
-def generate_scores_for_form(form):
-    """전형별 특성화된 점수 생성"""
-    score_columns = [
-        '성실성', '개방성', '외향성', '우호성', '정서안정성', '기술전문성',
-        '인지문제해결', '대인-영향력', '자기관리', '적응력', '학습속도',
-        '대인민첩성', '성과민첩성', '자기인식', '자기조절', '공감-사회기술'
-    ]
+        except Exception as e:
+            logger.error(f"결과 검증 실패: {e}")
+            print(f"❌ 결과 검증 실패: {e}")
+            return False
     
-    scores = {}
-    
-    # 전형별 특성화된 점수 생성 규칙
-    if '사무' in form or '관리' in form:
-        # 사무/관리직: 성실성, 자기관리, 대인-영향력, 공감-사회기술 높음
-        for col in score_columns:
-            if col in ['성실성', '자기관리', '대인-영향력', '공감-사회기술']:
-                scores[col] = random.randint(3, 5)
-            else:
-                scores[col] = random.randint(2, 4)
-                
-    elif '기술' in form or '연구' in form or '전문' in form:
-        # 기술/연구/전문직: 기술전문성, 인지문제해결, 학습속도, 자기관리 높음
-        for col in score_columns:
-            if col in ['기술전문성', '인지문제해결', '학습속도', '자기관리']:
-                scores[col] = random.randint(3, 5)
-            else:
-                scores[col] = random.randint(2, 4)
-                
-    elif '운전' in form or '기능' in form:
-        # 운전/기능직: 성실성, 정서안정성, 적응력, 자기관리 높음
-        for col in score_columns:
-            if col in ['성실성', '정서안정성', '적응력', '자기관리']:
-                scores[col] = random.randint(3, 5)
-            else:
-                scores[col] = random.randint(2, 4)
-                
-    elif '의료' in form or '보건' in form:
-        # 의료/보건직: 성실성, 우호성, 공감-사회기술, 자기조절 높음
-        for col in score_columns:
-            if col in ['성실성', '우호성', '공감-사회기술', '자기조절']:
-                scores[col] = random.randint(3, 5)
-            else:
-                scores[col] = random.randint(2, 4)
-                
-    elif '교육' in form or '사서' in form:
-        # 교육/사서직: 개방성, 대인-영향력, 공감-사회기술, 학습속도 높음
-        for col in score_columns:
-            if col in ['개방성', '대인-영향력', '공감-사회기술', '학습속도']:
-                scores[col] = random.randint(3, 5)
-            else:
-                scores[col] = random.randint(2, 4)
-                
-    elif '영업' in form or '서비스' in form:
-        # 영업/서비스직: 외향성, 대인-영향력, 공감-사회기술, 대인민첩성 높음
-        for col in score_columns:
-            if col in ['외향성', '대인-영향력', '공감-사회기술', '대인민첩성']:
-                scores[col] = random.randint(3, 5)
-            else:
-                scores[col] = random.randint(2, 4)
-                
-    else:
-        # 기타: 균등한 점수 분포
-        for col in score_columns:
-            scores[col] = random.randint(2, 4)
-    
-    # 약간의 변동성 추가
-    for col in score_columns:
-        variation = random.randint(-1, 1)
-        scores[col] = max(1, min(5, scores[col] + variation))
-    
-    return scores
-
-def check_table_status():
-    """테이블 상태 확인"""
-    try:
-        print("📊 채용공고평가점수 테이블 상태 확인 중...")
+    def run(self):
+        """전체 프로세스 실행"""
+        print("=" * 60)
+        print("🚀 TMP_채용공고평가점수 테이블 생성 시작")
+        print(f"⏰ 시작 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("=" * 60)
         
-        with DatabaseManager() as db:
-            # 테이블 존재 확인
-            check_sql = "SHOW TABLES LIKE '채용공고평가점수'"
-            result = db.execute_query(check_sql)
+        steps = [
+            ("테이블 생성", self.create_table),
+            ("소스 데이터 로드", lambda: self.load_source_data()),
+            ("점수 생성 및 삽입", self.process_scores),
+            ("결과 검증", self.verify_results)
+        ]
+        
+        self.source_df = None
+        
+        for step_name, step_func in steps:
+            print(f"\n📋 {step_name}...")
             
-            if not result:
-                print("❌ 채용공고평가점수 테이블이 존재하지 않습니다.")
-                return False
-            
-            # 레코드 수 확인
-            count_sql = "SELECT COUNT(*) as count FROM 채용공고평가점수"
-            count_result = db.execute_query(count_sql)
-            
-            if count_result:
-                record_count = count_result[0][0]
-                print(f"✅ 테이블 존재 확인: {record_count}개 레코드")
-                
-                # 기관별 통계
-                stats_sql = """
-                SELECT 
-                    COUNT(DISTINCT 기관코드) as agencies,
-                    COUNT(DISTINCT 일반전형) as forms,
-                    COUNT(*) as total_postings
-                FROM 채용공고평가점수
-                """
-                stats_result = db.execute_query(stats_sql)
-                
-                if stats_result:
-                    agencies, forms, total = stats_result[0]
-                    print(f"📋 통계: 기관 {agencies}개, 전형 {forms}개, 총 공고 {total}개")
-                
-                return True
+            if step_name == "소스 데이터 로드":
+                self.source_df = step_func()
+                if self.source_df is None:
+                    print(f"❌ {step_name} 실패")
+                    return False
+            elif step_name == "점수 생성 및 삽입":
+                if not step_func():
+                    print(f"❌ {step_name} 실패")
+                    return False
             else:
-                print("❌ 테이블 상태 확인 실패")
-                return False
-                
-    except Exception as e:
-        print(f"❌ 테이블 상태 확인 실패: {e}")
-        return False
+                if not step_func():
+                    print(f"❌ {step_name} 실패")
+                    return False
+        
+        print("\n" + "=" * 60)
+        print("🎉 TMP_채용공고평가점수 테이블 생성 완료!")
+        print(f"⏰ 완료 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("📊 이제 이 테이블을 사용하여 유사도 기반 추천 모델을 구축할 수 있습니다.")
+        print("=" * 60)
+        return True
+    
+    def process_scores(self):
+        """점수 생성 및 삽입 프로세스"""
+        if self.source_df is None:
+            print("❌ 소스 데이터가 없습니다")
+            return False
+        
+        # 점수 생성
+        scores_data = self.generate_all_scores(self.source_df)
+        if scores_data is None:
+            return False
+        
+        # 점수 삽입
+        return self.insert_scores(scores_data)
 
 def main():
-    """메인 실행 함수"""
-    print("🚀 채용공고평가점수 테이블 설정 시작")
-    print("=" * 50)
+    """메인 함수"""
+    generator = JobPostingScoreGenerator()
     
-    # 1. 테이블 상태 확인
-    if check_table_status():
-        print("\n⚠️ 테이블이 이미 존재합니다.")
-        response = input("새로운 샘플 데이터를 추가하시겠습니까? (y/n): ")
-        if response.lower() != 'y':
-            print("작업을 취소합니다.")
-            return
+    if generator.run():
+        print("\n✅ 모든 작업이 성공적으로 완료되었습니다!")
+        print("\n💡 다음 단계:")
+        print("   1. python model_builder.py --source database")
+        print("   2. 유사도 기반 추천 모델 구축")
+        print("   3. API 서버에서 추천 시스템 사용")
     else:
-        # 2. 테이블 생성
-        if not create_job_posting_scores_table():
-            print("테이블 생성에 실패했습니다.")
-            return
-    
-    # 3. 샘플 데이터 삽입
-    if insert_sample_data():
-        print("\n✅ 채용공고평가점수 테이블 설정 완료!")
-        
-        # 4. 최종 상태 확인
-        print("\n" + "=" * 50)
-        check_table_status()
-        
-        print("\n🎯 이제 다음 명령으로 추천 모델을 생성할 수 있습니다:")
-        print("   python3 model_builder.py --source database")
-    else:
-        print("❌ 샘플 데이터 삽입에 실패했습니다.")
+        print("\n❌ 작업 중 오류가 발생했습니다.")
+        print("💡 로그 파일을 확인하여 상세 오류를 파악하세요.")
 
 if __name__ == "__main__":
     main()
