@@ -155,39 +155,139 @@ class JobPostingScoreGenerator:
         
         return weights
     
-    def generate_score_with_weights(self, weights):
-        """가중치를 적용한 점수 생성"""
+    def generate_baseline_scores_by_form(self, df):
+        """일반전형별 기준 점수 생성"""
+        try:
+            logger.info("일반전형별 기준 점수 생성 시작")
+            
+            # 고유한 일반전형 목록 추출
+            unique_forms = df['일반전형'].unique()
+            baseline_scores = {}
+            
+            for form in unique_forms:
+                # 전형별 특성 분석
+                weights = self.analyze_form_characteristics(form)
+                
+                # 기준 점수 생성 (전형별로 고정)
+                np.random.seed(hash(form) % 1000)  # 전형명을 시드로 사용하여 일관된 점수
+                form_scores = {}
+                
+                for col in self.score_columns:
+                    # 가중치에 따른 기준 점수 계산
+                    if weights[col] >= 1.4:  # 높은 가중치
+                        base_score = np.random.choice([4, 5], p=[0.3, 0.7])
+                    elif weights[col] >= 1.2:  # 중간 가중치
+                        base_score = np.random.choice([3, 4, 5], p=[0.2, 0.5, 0.3])
+                    else:  # 기본 가중치
+                        base_score = np.random.choice([2, 3, 4], p=[0.3, 0.5, 0.2])
+                    
+                    form_scores[col] = base_score
+                
+                baseline_scores[form] = form_scores
+                logger.info(f"전형 '{form}' 기준 점수 생성 완료")
+            
+            logger.info(f"총 {len(baseline_scores)}개 전형의 기준 점수 생성 완료")
+            return baseline_scores
+            
+        except Exception as e:
+            logger.error(f"기준 점수 생성 실패: {e}")
+            return {}
+    
+    def analyze_form_characteristics(self, 일반전형):
+        """전형별 특성 분석 및 가중치 계산 (전형명만으로)"""
+        weights = {col: 1.0 for col in self.score_columns}
+        
+        # 텍스트 전처리
+        form_text = 일반전형.lower()
+        
+        # 1. 기술/전문직 가중치
+        tech_keywords = ['기술', '연구', '개발', 'it', '정보', '시스템', '프로그램', '엔지니어', '전산', '소프트웨어', '기계', '전기', '토목', '건축', '통신', '신호']
+        if any(keyword in form_text for keyword in tech_keywords):
+            weights['기술전문성'] *= 1.5
+            weights['인지문제해결'] *= 1.4
+            weights['학습속도'] *= 1.3
+            weights['자기관리'] *= 1.2
+        
+        # 2. 행정/사무직 가중치
+        admin_keywords = ['사무', '행정', '관리', '총무', '기획', '회계', '인사']
+        if any(keyword in form_text for keyword in admin_keywords):
+            weights['성실성'] *= 1.4
+            weights['자기관리'] *= 1.3
+            weights['공감사회기술'] *= 1.2
+            weights['대인영향력'] *= 1.2
+        
+        # 3. 대인서비스 가중치
+        service_keywords = ['고객', '상담', '민원', '안내', '서비스', '접수']
+        if any(keyword in form_text for keyword in service_keywords):
+            weights['외향성'] *= 1.4
+            weights['우호성'] *= 1.3
+            weights['공감사회기술'] *= 1.3
+            weights['대인민첩성'] *= 1.2
+        
+        # 4. 운전직 가중치
+        if '운전' in form_text:
+            weights['성실성'] *= 1.3
+            weights['정서안정성'] *= 1.3
+            weights['적응력'] *= 1.2
+            weights['자기관리'] *= 1.2
+        
+        # 5. 공무직 가중치
+        if '공무' in form_text:
+            weights['성실성'] *= 1.3
+            weights['자기관리'] *= 1.2
+            weights['공감사회기술'] *= 1.2
+        
+        # 6. 관리직 가중치
+        manager_keywords = ['팀장', '과장', '부장', '관리자', '책임자', '리더']
+        if any(keyword in form_text for keyword in manager_keywords):
+            weights['대인영향력'] *= 1.4
+            weights['자기조절'] *= 1.3
+            weights['성과민첩성'] *= 1.3
+            weights['자기인식'] *= 1.2
+        
+        return weights
+    
+    def generate_score_with_variation(self, baseline_score, variation_range=0.3):
+        """기준 점수에서 약간의 변동을 적용한 점수 생성"""
         scores = {}
         
         for col in self.score_columns:
-            # 기본 점수: 평균 3.0, 표준편차 0.8의 정규분포
-            base_score = np.random.normal(3.0, 0.8)
+            base = baseline_score[col]
             
-            # 가중치 적용
-            weighted_score = base_score * weights[col]
+            # ±30% 범위 내에서 변동 (최소 ±1점)
+            max_variation = max(1, int(base * variation_range))
+            variation = np.random.randint(-max_variation, max_variation + 1)
             
-            # 점수 범위 제한 (1 ~ 5)
-            final_score = max(1, min(5, weighted_score))
-            
-            # 정수로 반올림
-            scores[col] = int(round(final_score))
+            # 점수 범위 제한 (1~5)
+            final_score = max(1, min(5, base + variation))
+            scores[col] = final_score
         
         return scores
     
     def generate_all_scores(self, df):
-        """모든 레코드의 점수 생성"""
+        """모든 레코드의 점수 생성 (일관성 있는 전형별 점수)"""
         try:
             logger.info("점수 생성 시작")
+            
+            # 1. 일반전형별 기준 점수 생성
+            baseline_scores = self.generate_baseline_scores_by_form(df)
+            if not baseline_scores:
+                logger.error("기준 점수 생성 실패")
+                return None
+            
+            # 2. 각 레코드별 점수 생성 (기준 점수 + 약간의 변동)
             all_scores = []
             
             for idx, row in df.iterrows():
-                # 특성 분석 및 가중치 계산
-                weights = self.analyze_job_characteristics(
-                    row['기관명'], row['공고명'], row['일반전형']
-                )
+                form = row['일반전형']
+                baseline = baseline_scores.get(form, {})
                 
-                # 가중치 적용 점수 생성
-                scores = self.generate_score_with_weights(weights)
+                if not baseline:
+                    logger.warning(f"전형 '{form}'의 기준 점수를 찾을 수 없습니다")
+                    continue
+                
+                # 기준 점수에서 약간의 변동을 적용
+                scores = self.generate_score_with_variation(baseline)
                 
                 # 기본 정보 추가
                 score_data = {
@@ -203,12 +303,54 @@ class JobPostingScoreGenerator:
             
             logger.info(f"점수 생성 완료: {len(all_scores)}개")
             print(f"✅ 점수 생성 완료: {len(all_scores)}개")
+            
+            # 3. 전형별 점수 일관성 검증
+            self.validate_form_consistency(all_scores)
+            
             return all_scores
             
         except Exception as e:
             logger.error(f"점수 생성 실패: {e}")
             print(f"❌ 점수 생성 실패: {e}")
             return None
+    
+    def validate_form_consistency(self, all_scores):
+        """전형별 점수 일관성 검증"""
+        try:
+            logger.info("전형별 점수 일관성 검증 시작")
+            
+            # 전형별 점수 분석
+            form_analysis = {}
+            for score_data in all_scores:
+                form = score_data['일반전형']
+                if form not in form_analysis:
+                    form_analysis[form] = {col: [] for col in self.score_columns}
+                
+                for col in self.score_columns:
+                    form_analysis[form][col].append(score_data[col])
+            
+            # 일관성 검증 및 리포트
+            print("\n📊 전형별 점수 일관성 검증:")
+            for form, scores in form_analysis.items():
+                if len(scores[self.score_columns[0]]) > 1:  # 2개 이상의 레코드가 있는 경우만
+                    print(f"\n  📋 {form} ({len(scores[self.score_columns[0]])}개 공고):")
+                    
+                    # 주요 점수 항목별 분석
+                    key_columns = ['성실성', '기술전문성', '대인영향력']
+                    for col in key_columns:
+                        col_scores = scores[col]
+                        avg_score = sum(col_scores) / len(col_scores)
+                        min_score = min(col_scores)
+                        max_score = max(col_scores)
+                        range_score = max_score - min_score
+                        
+                        print(f"    {col}: 평균 {avg_score:.1f}, 범위 {min_score}~{max_score} (편차 {range_score})")
+            
+            logger.info("전형별 점수 일관성 검증 완료")
+            
+        except Exception as e:
+            logger.error(f"일관성 검증 실패: {e}")
+            print(f"⚠️ 일관성 검증 실패: {e}")
     
     def insert_scores(self, scores_data):
         """점수 데이터 삽입"""
