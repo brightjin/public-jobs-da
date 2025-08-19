@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 API 클라이언트 테스트 스크립트
-test_request.json 파일을 사용하여 http://localhost:8080/recommend API에 요청을 보내고 결과를 확인합니다.
+test_request.json 파일을 사용하여 http://localhost:8888/recommend API에 요청을 보내고 결과를 확인합니다.
 """
 
 import json
@@ -112,7 +112,7 @@ def main():
     print("=" * 60)
     
     # 설정
-    api_url = "http://localhost:8080/recommend"
+    api_url = "http://localhost:8888/recommend"
     test_file = "test_request.json"
     
     # 1. 테스트 데이터 로드
