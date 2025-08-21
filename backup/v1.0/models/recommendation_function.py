@@ -25,8 +25,8 @@ def recommend_job_postings(user_scores, model_dir='./models', top_k=5):
     
     score_columns = [
         '성실성', '개방성', '외향성', '우호성', '정서안정성', '기술전문성',
-        '인지문제해결', '대인-영향력', '자기관리', '적응력', '학습속도',
-        '대인민첩성', '성과민첩성', '자기인식', '자기조절', '공감-사회기술'
+        '인지문제해결', '대인영향력', '자기관리', '적응력', '학습속도',
+        '대인민첩성', '성과민첩성', '자기인식', '자기조절', '공감사회기술'
     ]
     
     # 사용자 점수 정규화
@@ -42,8 +42,8 @@ def recommend_job_postings(user_scores, model_dir='./models', top_k=5):
     recommendations = []
     for idx in top_indices:
         recommendations.append({
-            '공고일련번호': job_posting_scores.iloc[idx]['공고일련번호'],
-            '기관코드': job_posting_scores.iloc[idx]['기관코드'],
+            'id': job_posting_scores.iloc[idx]['id'],
+            '기관명': job_posting_scores.iloc[idx]['기관명'],
             '일반전형': job_posting_scores.iloc[idx]['일반전형'],
             '유사도': float(similarities[idx])
         })
